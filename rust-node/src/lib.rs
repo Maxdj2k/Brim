@@ -3,6 +3,7 @@ pub mod veracity;
 
 use thiserror::Error;
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 
 #[derive(Error, Debug)]
 pub enum BrimError {
@@ -20,7 +21,7 @@ pub enum BrimError {
 
 pub type Result<T> = std::result::Result<T, BrimError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
     GlobalAdmin,
     GroupAdmin,
