@@ -1,5 +1,7 @@
 # Rust
 /target/
+target/
+**/target/
 **/*.rs.bk
 Cargo.lock
 
@@ -7,6 +9,7 @@ Cargo.lock
 __pycache__/
 *.py[cod]
 *$py.class
+*.sqlite3
 *.so
 .Python
 build/
@@ -30,6 +33,10 @@ venv/
 ENV/
 env/
 brimenv/
+
+# JavaScript
+node_modules/
+**/node_modules/
 
 # IDE
 .idea/
