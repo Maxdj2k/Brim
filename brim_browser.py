@@ -254,26 +254,119 @@ class WebFetcher:
     """Fetch and process web content"""
     
     @staticmethod
-    def fetch(url, timeout=10):
+    def fetch(url, timeout=15):
+        """Fetch webpage with robust headers to bypass blocking"""
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        # More realistic browser headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'identity',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0'
+        }
+        
         req = urllib.request.Request(url, headers=headers)
         
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as response:
-            return response.read().decode('utf-8', errors='ignore')
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as response:
+                # Handle encoding properly
+                content_type = response.headers.get('Content-Type', '')
+                charset = 'utf-8'
+                if 'charset=' in content_type:
+                    charset = content_type.split('charset=')[-1].split(';')[0].strip()
+                
+                try:
+                    return response.read().decode(charset, errors='ignore')
+                except:
+                    return response.read().decode('utf-8', errors='ignore')
+        except urllib.error.HTTPError as e:
+            # Try fallback text extraction services
+            return WebFetcher._try_text_services(url)
+        except Exception as e:
+            return WebFetcher._try_text_services(url)
+    
+    @staticmethod
+    def _try_text_services(url):
+        """Try text extraction services as fallback"""
+        # Try r.jina.ai (AI article extraction service)
+        try:
+            jina_url = f"https://r.jina.ai/http://{url.replace('https://', '').replace('http://', '')}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            req = urllib.request.Request(jina_url, headers=headers, timeout=10)
+            
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                text = response.read().decode('utf-8', errors='ignore')
+                # Wrap in HTML structure
+                return f"<html><head><title>Extracted Content</title></head><body><pre>{text}</pre></body></html>"
+        except:
+            pass
+        
+        # Try textise dot iitty
+        try:
+            textise_url = f"https://r.jina.ai/http://{url.replace('https://', '').replace('http://', '')}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            req = urllib.request.Request(textise_url, headers=headers, timeout=10)
+            
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                return response.read().decode('utf-8', errors='ignore')
+        except:
+            pass
+        
+        raise Exception("Could not fetch content from any source")
     
     @staticmethod
     def extract_text(html):
+        """Extract readable text from HTML with improved formatting"""
+        if not html:
+            return ""
+        
         # Remove scripts and styles
         text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<noscript[^>]*>.*?</noscript>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<header[^>]*>.*?</header>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Extract main content if available
+        main_match = re.search(r'<main[^>]*>(.*?)</main>', text, re.DOTALL | re.IGNORECASE)
+        if main_match:
+            text = main_match.group(1)
+        else:
+            # Try article tag
+            article_match = re.search(r'<article[^>]*>(.*?)</article>', text, re.DOTALL | re.IGNORECASE)
+            if article_match:
+                text = article_match.group(1)
         
         # Preserve structure
         text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
         text = re.sub(r'<p\s*/?>', '\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<h1[^>]*>', '\n\n=== ', text, flags=re.IGNORECASE)
+        text = re.sub(r'</h1>', ' ===\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<h2[^>]*>', '\n\n--- ', text, flags=re.IGNORECASE)
+        text = re.sub(r'</h2>', ' ---\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<h3[^>]*>', '\n\n** ', text, flags=re.IGNORECASE)
+        text = re.sub(r'</h3>', ' **\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<li[^>]*>', '\n• ', text, flags=re.IGNORECASE)
+        text = re.sub(r'</li>', '', text, flags=re.IGNORECASE)
         text = re.sub(r'<div[^>]*>', '\n', text, flags=re.IGNORECASE)
         text = re.sub(r'</div>', '', text, flags=re.IGNORECASE)
         
@@ -289,8 +382,26 @@ class WebFetcher:
     
     @staticmethod
     def extract_title(html):
+        """Extract page title from HTML"""
+        if not html:
+            return 'Untitled'
+        
+        # Try og:title first (Open Graph)
+        og_match = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if og_match:
+            return html.unescape(og_match.group(1).strip())
+        
+        # Try twitter:title
+        tw_match = re.search(r'<meta[^>]*name=["\']twitter:title["\'][^>]*content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if tw_match:
+            return html.unescape(tw_match.group(1).strip())
+        
+        # Fallback to regular title
         match = re.search(r'<title[^>]*>([^<]*)</title>', html, re.IGNORECASE)
-        return match.group(1).strip() if match else 'Untitled'
+        if match:
+            return html.unescape(match.group(1).strip())
+        
+        return 'Untitled'
 
 
 class BrimBrowser:
@@ -308,7 +419,8 @@ class BrimBrowser:
         'white': '#ffffff',
         'light_gray': '#a0a0b0',
         'dark_gray': '#606070',
-        'primary': '#00d9ff',    # Cyan
+        'primary': '#0d5f6e',    # Dark teal (darker button color)
+        'primary_hover': '#0f766e', # Slightly lighter for hover
         'success': '#00ff88',    # Green
         'warning': '#ffcc00',    # Yellow
         'danger': '#ff3366',     # Red
@@ -402,13 +514,19 @@ class BrimBrowser:
         btn_frame = tk.Frame(form, bg=self.colors['panel'])
         btn_frame.pack(fill='x')
         
-        tk.Button(btn_frame, text="Sign In", font=('Inter', 12, 'bold'),
+        login_btn = tk.Button(btn_frame, text="Sign In", font=('Inter', 12, 'bold'),
                  bg=self.colors['primary'], fg='white', relief='flat',
-                 command=self.do_login).pack(side='left', fill='x', expand=True, ipady=10)
+                 cursor='hand2', command=self.do_login)
+        login_btn.pack(side='left', fill='x', expand=True, ipady=10)
+        login_btn.bind('<Enter>', lambda e: login_btn.config(bg=self.colors['primary_hover']))
+        login_btn.bind('<Leave>', lambda e: login_btn.config(bg=self.colors['primary']))
         
-        tk.Button(btn_frame, text="Create Account", font=('Inter', 12),
+        signup_btn = tk.Button(btn_frame, text="Create Account", font=('Inter', 12),
                  bg=self.colors['card'], fg=self.colors['text'], relief='flat',
-                 command=self.show_signup).pack(side='left', fill='x', expand=True, ipady=10, padx=(10, 0))
+                 cursor='hand2', command=self.show_signup)
+        signup_btn.pack(side='left', fill='x', expand=True, ipady=10, padx=(10, 0))
+        signup_btn.bind('<Enter>', lambda e: signup_btn.config(bg=self.colors['card_hover']))
+        signup_btn.bind('<Leave>', lambda e: signup_btn.config(bg=self.colors['card']))
     
     def show_signup(self):
         self.clear()
@@ -445,13 +563,19 @@ class BrimBrowser:
         btn_frame = tk.Frame(form, bg=self.colors['panel'])
         btn_frame.pack(fill='x')
         
-        tk.Button(btn_frame, text="Create", font=('Inter', 12, 'bold'),
+        create_btn = tk.Button(btn_frame, text="Create", font=('Inter', 12, 'bold'),
                  bg=self.colors['primary'], fg='white', relief='flat',
-                 command=self.do_signup).pack(side='left', fill='x', expand=True, ipady=10)
+                 cursor='hand2', command=self.do_signup)
+        create_btn.pack(side='left', fill='x', expand=True, ipady=10)
+        create_btn.bind('<Enter>', lambda e: create_btn.config(bg=self.colors['primary_hover']))
+        create_btn.bind('<Leave>', lambda e: create_btn.config(bg=self.colors['primary']))
         
-        tk.Button(btn_frame, text="Back", font=('Inter', 12),
+        back_btn = tk.Button(btn_frame, text="Back", font=('Inter', 12),
                  bg=self.colors['card'], fg=self.colors['text'], relief='flat',
-                 command=self.show_login).pack(side='left', fill='x', expand=True, ipady=10, padx=(10, 0))
+                 cursor='hand2', command=self.show_login)
+        back_btn.pack(side='left', fill='x', expand=True, ipady=10, padx=(10, 0))
+        back_btn.bind('<Enter>', lambda e: back_btn.config(bg=self.colors['card_hover']))
+        back_btn.bind('<Leave>', lambda e: back_btn.config(bg=self.colors['card']))
     
     def do_login(self):
         username = self.l_user.get().strip()
@@ -583,9 +707,12 @@ class BrimBrowser:
         search_entry.pack(fill='x', pady=(0, 10), ipady=8)
         search_entry.bind('<Return>', lambda e: self.search())
         
-        tk.Button(search_frame, text="Search", font=('Inter', 11, 'bold'),
+        search_btn = tk.Button(search_frame, text="Search", font=('Inter', 11, 'bold'),
                  bg=self.colors['primary'], fg='white', relief='flat',
-                 command=self.search).pack(fill='x', ipady=8)
+                 cursor='hand2', command=self.search)
+        search_btn.pack(fill='x', ipady=8)
+        search_btn.bind('<Enter>', lambda e: search_btn.config(bg=self.colors['primary_hover']))
+        search_btn.bind('<Leave>', lambda e: search_btn.config(bg=self.colors['primary']))
         
         # Search engine selector - Privacy focused for students
         self.search_engine = tk.StringVar(value='searx')
@@ -945,6 +1072,13 @@ source credibility before trusting.
             text = self.fetcher.extract_text(html)
             title = self.fetcher.extract_title(html)
             
+            # Check if we got meaningful content
+            word_count = len(text.split())
+            
+            if word_count < 50 and len(html) < 1000:
+                # Likely got an error page or minimal content
+                raise Exception("Insufficient content received")
+            
             # Store for analysis
             self.current_html = html
             self.current_text = text
@@ -962,13 +1096,51 @@ source credibility before trusting.
             # Display granular analysis
             self._display_granular_analysis(analysis, result)
             
-            self.status_label.config(text=f"✓ Loaded • {len(text.split())} words")
+            if word_count > 0:
+                self.status_label.config(text=f"✓ Loaded • {word_count:,} words")
+            else:
+                self.status_label.config(text="✓ Loaded (title only)")
             
         except Exception as e:
-            self.status_label.config(text=f"Error: {str(e)[:50]}")
-            # Fall back to external browser
-            webbrowser.open(url)
+            self.status_label.config(text=f"⚠ Could not load directly - analysis still available")
+            
+            # Show helpful message in content area
+            self._display_fallback_message(url, str(e))
+            
+            # Still run basic analysis on URL/domain
             self.analyze_site(result)
+    
+    def _display_fallback_message(self, url, error):
+        """Display message when content can't be loaded directly"""
+        self.web_view.config(state='normal')
+        self.web_view.delete('1.0', tk.END)
+        
+        self.page_title_label.config(text="◆ External Link")
+        
+        # Add informative message
+        self.web_view.insert(tk.END, "🔗 External Website\n", 'title')
+        self.web_view.insert(tk.END, f"{url}\n\n", 'link')
+        
+        message = """
+This website cannot be displayed directly in Brim's viewer because:
+
+• The site may require JavaScript to load
+• The site may block automated requests  
+• The site may have anti-scraping protection
+
+→ The AI analysis on the right is still available
+  based on the URL and domain reputation.
+
+→ Click below to open in your external browser:
+"""
+        self.web_view.insert(tk.END, message, 'muted')
+        
+        # Add clickable link (as text instruction)
+        self.web_view.insert(tk.END, f"\n{url}\n", 'link')
+        self.web_view.insert(tk.END, "\n(Copy URL and paste in your browser)\n", 'muted')
+        
+        self.web_view.config(state='disabled')
+        self.web_view.see('1.0')
     
     def _display_content(self, title, text, url):
         """Display webpage content in the viewer"""
@@ -1252,9 +1424,12 @@ source credibility before trusting.
                 self._display_granular_analysis(self.current_analysis, {'url': url, 'source': self.extract_domain(url)})
             messagebox.showinfo("Posted", "Comment added!")
         
-        tk.Button(form_frame, text="Post Comment", font=('SF Pro', 11, 'bold'),
-                 bg=self.colors['cyan'], fg=self.colors['bg'], relief='flat',
-                 cursor='hand2', command=submit).pack(fill='x', pady=(10, 0), ipady=8)
+        post_btn = tk.Button(form_frame, text="Post Comment", font=('SF Pro', 11, 'bold'),
+                 bg=self.colors['primary'], fg='white', relief='flat',
+                 cursor='hand2', command=submit)
+        post_btn.pack(fill='x', pady=(10, 0), ipady=8)
+        post_btn.bind('<Enter>', lambda e: post_btn.config(bg=self.colors['primary_hover']))
+        post_btn.bind('<Leave>', lambda e: post_btn.config(bg=self.colors['primary']))
         
         # Show existing comments
         if site_comments:
