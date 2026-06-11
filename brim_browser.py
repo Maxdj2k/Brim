@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Brim Browser - Web Browser with Veracity Protocol & Social Features"""
+"""
+Brim Browser v2 - Embedded Web Browser with AI Veracity Analysis
+Pure Python, no external dependencies beyond tkinter
+"""
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import json
 import os
 import hashlib
@@ -10,15 +13,315 @@ import secrets
 import urllib.request
 import urllib.parse
 import webbrowser
+import ssl
+import re
+import html
 from datetime import datetime
+from urllib.parse import urlparse, urljoin
+
+
+class AIAnalyzer:
+    """Granular AI analysis of web content"""
+    
+    @staticmethod
+    def analyze_content(url, html_content, text_content):
+        """Perform comprehensive AI analysis"""
+        analysis = {
+            'veracity_score': 0,
+            'signals': {},
+            'content_analysis': {},
+            'risk_factors': [],
+            'recommendations': [],
+            'metadata': {},
+            'sentiment': {},
+            'entities': {},
+            'readability': {}
+        }
+        
+        # 1. Security Signals
+        analysis['signals']['https'] = 15 if url.startswith('https://') else 0
+        analysis['signals']['security_headers'] = AIAnalyzer._check_security_headers(html_content)
+        
+        # 2. Domain Authority
+        domain_score = AIAnalyzer._analyze_domain_authority(url)
+        analysis['signals']['domain_authority'] = domain_score
+        
+        # 3. Content Quality
+        content_metrics = AIAnalyzer._analyze_content_quality(text_content)
+        analysis['content_analysis'] = content_metrics
+        
+        # 4. Sentiment Analysis
+        analysis['sentiment'] = AIAnalyzer._analyze_sentiment(text_content)
+        
+        # 5. Entity Extraction
+        analysis['entities'] = AIAnalyzer._extract_entities(text_content)
+        
+        # 6. Readability Score
+        analysis['readability'] = AIAnalyzer._calculate_readability(text_content)
+        
+        # 7. Risk Detection
+        analysis['risk_factors'] = AIAnalyzer._detect_risks(url, text_content)
+        
+        # Calculate overall score
+        total = sum(analysis['signals'].values())
+        total += min(content_metrics.get('quality_score', 0), 20)
+        total -= len(analysis['risk_factors']) * 5
+        
+        analysis['veracity_score'] = max(0, min(100, total))
+        analysis['validated'] = analysis['veracity_score'] >= 70
+        
+        # Generate recommendations
+        analysis['recommendations'] = AIAnalyzer._generate_recommendations(analysis)
+        
+        return analysis
+    
+    @staticmethod
+    def _check_security_headers(html_content):
+        indicators = [('Content-Security-Policy', 5), ('X-Frame-Options', 3),
+                     ('Strict-Transport-Security', 5), ('X-Content-Type-Options', 2)]
+        score = sum(points for indicator, points in indicators 
+                   if indicator.lower() in html_content.lower())
+        return min(15, score)
+    
+    @staticmethod
+    def _analyze_domain_authority(url):
+        domain = urlparse(url).netloc.lower()
+        
+        tier1 = ['.gov', '.edu', '.ac.uk', '.ac.jp', 'who.int', 'un.org',
+                'worldbank.org', 'wikipedia.org', 'nature.com', 'science.org']
+        if any(t in domain for t in tier1):
+            return 30
+        
+        tier2 = ['github.com', 'stackoverflow.com', 'arxiv.org', 'pubmed.ncbi.nlm.nih.gov',
+                'researchgate.net', 'scholar.google.com', 'ieee.org', 'acm.org']
+        if any(t in domain for t in tier2):
+            return 25
+        
+        tier3 = ['reuters.com', 'ap.org', 'bbc.com', 'npr.org', 'wsj.com', 'nytimes.com']
+        if any(t in domain for t in tier3):
+            return 20
+        
+        tier4 = ['reddit.com', 'twitter.com', 'facebook.com', 'youtube.com']
+        if any(t in domain for t in tier4):
+            return 5
+        
+        return 10
+    
+    @staticmethod
+    def _analyze_content_quality(text):
+        if not text:
+            return {'quality_score': 0, 'word_count': 0, 'has_citations': False}
+        
+        words = text.split()
+        word_count = len(words)
+        
+        citation_patterns = [r'\[\d+\]', r'\(\d{4}\)', r'doi[:\/]', r'references', r'bibliography']
+        has_citations = any(re.search(p, text, re.IGNORECASE) for p in citation_patterns)
+        has_author = bool(re.search(r'(author|byline|written by)', text, re.IGNORECASE))
+        has_date = bool(re.search(r'\b20\d{2}\b', text))
+        
+        score = 0
+        if word_count > 500: score += 5
+        if word_count > 1000: score += 5
+        if has_citations: score += 10
+        if has_author: score += 5
+        if has_date: score += 5
+        
+        return {'quality_score': score, 'word_count': word_count,
+                'has_citations': has_citations, 'has_author': has_author, 'has_date': has_date}
+    
+    @staticmethod
+    def _analyze_sentiment(text):
+        if not text:
+            return {'sentiment': 'neutral', 'polarity': 0}
+        
+        positive = ['good', 'great', 'excellent', 'positive', 'success', 'benefit', 'advantage']
+        negative = ['bad', 'terrible', 'negative', 'fail', 'danger', 'risk', 'problem', 'issue']
+        
+        text_lower = text.lower()
+        pos_count = sum(1 for w in positive if w in text_lower)
+        neg_count = sum(1 for w in negative if w in text_lower)
+        
+        total = pos_count + neg_count
+        if total == 0:
+            return {'sentiment': 'neutral', 'polarity': 0}
+        
+        polarity = (pos_count - neg_count) / total
+        
+        if polarity > 0.2: sentiment = 'positive'
+        elif polarity < -0.2: sentiment = 'negative'
+        else: sentiment = 'neutral'
+        
+        return {'sentiment': sentiment, 'polarity': polarity,
+                'positive_words': pos_count, 'negative_words': neg_count}
+    
+    @staticmethod
+    def _extract_entities(text):
+        entities = {'organizations': [], 'people': [], 'locations': [], 'dates': []}
+        
+        org_pattern = r'([A-Z][a-z]+ (?:University|Institute|Corporation|Inc|Corp|Ltd|Company))'
+        entities['organizations'] = re.findall(org_pattern, text)[:5]
+        
+        date_pattern = r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b'
+        entities['dates'] = re.findall(date_pattern, text, re.IGNORECASE)[:5]
+        
+        return entities
+    
+    @staticmethod
+    def _calculate_readability(text):
+        if not text:
+            return {'score': 0, 'level': 'unknown', 'grade': 'N/A'}
+        
+        sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
+        words = text.split()
+        
+        if not sentences or not words:
+            return {'score': 0, 'level': 'unknown', 'grade': 'N/A'}
+        
+        avg_sentence = len(words) / len(sentences)
+        avg_syllables = sum(AIAnalyzer._count_syllables(w) for w in words) / len(words)
+        
+        score = 206.835 - (1.015 * avg_sentence) - (84.6 * avg_syllables)
+        score = max(0, min(100, score))
+        
+        if score >= 90: level, grade = 'very_easy', '5th grade'
+        elif score >= 80: level, grade = 'easy', '6th grade'
+        elif score >= 70: level, grade = 'fairly_easy', '7th grade'
+        elif score >= 60: level, grade = 'standard', '8th-9th grade'
+        elif score >= 50: level, grade = 'fairly_difficult', '10th-12th grade'
+        elif score >= 30: level, grade = 'difficult', 'College'
+        else: level, grade = 'very_difficult', 'Graduate'
+        
+        return {'score': round(score, 1), 'level': level, 'grade': grade}
+    
+    @staticmethod
+    def _count_syllables(word):
+        word = word.lower()
+        vowels = "aeiouy"
+        count = 0
+        prev_vowel = False
+        
+        for char in word:
+            is_vowel = char in vowels
+            if is_vowel and not prev_vowel:
+                count += 1
+            prev_vowel = is_vowel
+        
+        if word.endswith('e'):
+            count -= 1
+        
+        return max(1, count)
+    
+    @staticmethod
+    def _detect_risks(url, text):
+        risks = []
+        text_lower = text.lower()
+        
+        if not url.startswith('https://'):
+            risks.append('Insecure connection (no HTTPS)')
+        
+        sensational = ['shocking', 'unbelievable', 'you won\'t believe', 'miracle', 'secret']
+        if any(w in text_lower for w in sensational):
+            risks.append('Sensationalist language detected')
+        
+        urgency = ['act now', 'limited time', 'urgent', 'expires soon']
+        if any(w in text_lower for w in urgency):
+            risks.append('Urgency pressure tactics')
+        
+        return risks
+    
+    @staticmethod
+    def _generate_recommendations(analysis):
+        recs = []
+        
+        if analysis['veracity_score'] >= 80:
+            recs.append('✓ High credibility source - reliable for research')
+        elif analysis['veracity_score'] >= 60:
+            recs.append('~ Moderate credibility - verify with additional sources')
+        else:
+            recs.append('⚠ Low credibility - cross-check information')
+        
+        if analysis['risk_factors']:
+            recs.append('⚠ Risk factors detected - read critically')
+        
+        if not analysis['content_analysis'].get('has_citations'):
+            recs.append('ℹ No citations found - verify claims independently')
+        
+        return recs
+
+
+class WebFetcher:
+    """Fetch and process web content"""
+    
+    @staticmethod
+    def fetch(url, timeout=10):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        req = urllib.request.Request(url, headers=headers)
+        
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as response:
+            return response.read().decode('utf-8', errors='ignore')
+    
+    @staticmethod
+    def extract_text(html):
+        # Remove scripts and styles
+        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Preserve structure
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<p\s*/?>', '\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<div[^>]*>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'</div>', '', text, flags=re.IGNORECASE)
+        
+        # Remove remaining tags
+        text = re.sub(r'<[^>]+>', '', text)
+        text = html.unescape(text)
+        
+        # Clean whitespace
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(r'[ \t]+', ' ', text)
+        
+        return text.strip()
+    
+    @staticmethod
+    def extract_title(html):
+        match = re.search(r'<title[^>]*>([^<]*)</title>', html, re.IGNORECASE)
+        return match.group(1).strip() if match else 'Untitled'
 
 
 class BrimBrowser:
+    # Colors - matching Lua implementation (class-level for early access)
+    colors = {
+        'bg': '#1a1a2e',        # Deep dark blue
+        'panel': '#16213e',      # Slightly lighter blue
+        'card': '#0f3460',       # Card background
+        'card_hover': '#1a4a7a', # Hover state
+        'cyan': '#00d9ff',
+        'green': '#00ff88',
+        'red': '#ff3366',
+        'yellow': '#ffcc00',
+        'blue': '#4488ff',
+        'white': '#ffffff',
+        'light_gray': '#a0a0b0',
+        'dark_gray': '#606070',
+        'primary': '#00d9ff',    # Cyan
+        'success': '#00ff88',    # Green
+        'warning': '#ffcc00',    # Yellow
+        'danger': '#ff3366',     # Red
+        'text': '#ffffff',
+        'muted': '#a0a0b0',
+        'accent': '#4488ff'      # Blue
+    }
+    
     def __init__(self, root):
         self.root = root
-        self.root.title("Brim Browser")
-        self.root.geometry("1400x900")
-        self.root.configure(bg="#0f172a")
+        self.root.title("◆ Brim Browser - AI Veracity Protocol")
+        self.root.geometry("1600x1000")
+        self.root.configure(bg=self.colors['bg'])
         
         # Data
         self.data_dir = os.path.expanduser("~/.brim")
@@ -31,11 +334,13 @@ class BrimBrowser:
         self.users = self.load_json(self.users_file, {})
         self.comments = self.load_json(self.comments_file, {})
         self.current_url = None
+        self.current_html = None
+        self.current_text = None
+        self.current_analysis = None
         
-        # Colors
-        self.colors = {'bg': '#0f172a', 'panel': '#1e293b', 'card': '#334155', 
-                      'primary': '#0f766e', 'text': '#f8fafc', 'muted': '#94a3b8',
-                      'success': '#22c55e', 'warning': '#f59e0b'}
+        # AI components
+        self.analyzer = AIAnalyzer()
+        self.fetcher = WebFetcher()
         
         self.show_login()
     
@@ -305,23 +610,61 @@ class BrimBrowser:
         scrollbar.pack(side="right", fill="y")
     
     def create_webview(self):
-        """Create center web view - uses iframe approach for embedded browsing"""
+        """Create center web view with scrolled text for content display"""
         self.web_frame = tk.Frame(self.root, bg=self.colors['bg'])
-        self.web_frame.grid(row=1, column=1, sticky='nsew', padx=1, pady=1)
+        self.web_frame.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
+        self.web_frame.grid_rowconfigure(0, weight=1)
+        self.web_frame.grid_columnconfigure(0, weight=1)
         
-        # Create a text widget to render HTML (simplified browser)
-        self.web_view = tk.Text(self.web_frame, bg='white', fg='black',
-                               font=('Courier', 12), wrap='word',
-                               state='disabled', cursor='arrow')
-        self.web_view.pack(fill='both', expand=True)
+        # Header showing current page
+        self.content_header = tk.Frame(self.web_frame, bg=self.colors['panel'], height=40)
+        self.content_header.grid(row=0, column=0, sticky='ew')
+        self.content_header.pack_propagate(False)
         
-        # Alternative: open in system browser but keep panel updated
-        self.web_label = tk.Label(self.web_frame, 
-                                 text="Click a search result to open in browser\n\n"
-                                      "The veracity panel will analyze the site",
-                                 font=('Inter', 14), bg=self.colors['bg'],
-                                 fg=self.colors['muted'], justify='center')
-        self.web_label.place(relx=0.5, rely=0.5, anchor='center')
+        self.page_title_label = tk.Label(self.content_header, text="◆ Ready to browse",
+                                        font=('SF Pro', 12, 'bold'), bg=self.colors['panel'],
+                                        fg=self.colors['cyan'])
+        self.page_title_label.pack(side='left', padx=15, pady=8)
+        
+        # Progress bar frame
+        self.progress_frame = tk.Frame(self.content_header, bg=self.colors['card'], height=4)
+        self.progress_frame.pack(side='bottom', fill='x', padx=15)
+        
+        # Content area with scrolled text
+        self.content_area = tk.Frame(self.web_frame, bg=self.colors['bg'])
+        self.content_area.grid(row=1, column=0, sticky='nsew')
+        self.content_area.grid_rowconfigure(0, weight=1)
+        self.content_area.grid_columnconfigure(0, weight=1)
+        
+        self.web_view = scrolledtext.ScrolledText(
+            self.content_area,
+            wrap=tk.WORD,
+            font=('SF Pro', 12),
+            bg=self.colors['bg'],
+            fg=self.colors['white'],
+            relief='flat',
+            highlightthickness=1,
+            highlightbackground=self.colors['card'],
+            padx=20,
+            pady=20,
+            state='disabled'
+        )
+        self.web_view.grid(row=0, column=0, sticky='nsew')
+        
+        # Configure text tags for styling
+        self.web_view.tag_configure('title', font=('SF Pro', 18, 'bold'), foreground=self.colors['cyan'])
+        self.web_view.tag_configure('heading', font=('SF Pro', 14, 'bold'), foreground=self.colors['blue'])
+        self.web_view.tag_configure('link', foreground=self.colors['cyan'], underline=True)
+        self.web_view.tag_configure('bold', font=('SF Pro', 12, 'bold'))
+        
+        # Status bar
+        self.status_bar = tk.Frame(self.web_frame, bg=self.colors['panel'], height=25)
+        self.status_bar.grid(row=2, column=0, sticky='ew')
+        self.status_bar.pack_propagate(False)
+        
+        self.status_label = tk.Label(self.status_bar, text="Ready", font=('SF Pro', 10),
+                                    bg=self.colors['panel'], fg=self.colors['light_gray'])
+        self.status_label.pack(side='left', padx=15)
     
     def create_right_panel(self):
         panel = tk.Frame(self.root, bg=self.colors['panel'], width=350)
@@ -473,14 +816,170 @@ All data stored locally."""
             card.bind('<Button-1>', lambda e, r=result: self.load_site(r))
     
     def load_site(self, result):
-        self.current_url = result['url']
-        self.url_var.set(result['url'])
+        """Fetch and display webpage with AI analysis"""
+        url = result['url']
+        self.current_url = url
+        self.url_var.set(url)
         
-        # Open in browser
-        webbrowser.open(result['url'])
+        # Update status
+        self.status_label.config(text=f"Loading {url}...")
+        self.page_title_label.config(text="◆ Loading...")
+        self.root.update()
         
-        # Update panel
-        self.analyze_site(result)
+        try:
+            # Fetch the webpage
+            html = self.fetcher.fetch(url)
+            text = self.fetcher.extract_text(html)
+            title = self.fetcher.extract_title(html)
+            
+            # Store for analysis
+            self.current_html = html
+            self.current_text = text
+            
+            # Display content
+            self._display_content(title, text, url)
+            
+            # Run AI analysis
+            self.status_label.config(text="Running AI analysis...")
+            self.root.update()
+            
+            analysis = self.analyzer.analyze_content(url, html, text)
+            self.current_analysis = analysis
+            
+            # Display granular analysis
+            self._display_granular_analysis(analysis, result)
+            
+            self.status_label.config(text=f"✓ Loaded • {len(text.split())} words")
+            
+        except Exception as e:
+            self.status_label.config(text=f"Error: {str(e)[:50]}")
+            # Fall back to external browser
+            webbrowser.open(url)
+            self.analyze_site(result)
+    
+    def _display_content(self, title, text, url):
+        """Display webpage content in the viewer"""
+        self.web_view.config(state='normal')
+        self.web_view.delete('1.0', tk.END)
+        
+        # Update header
+        display_title = title[:60] + "..." if len(title) > 60 else title
+        self.page_title_label.config(text=f"◆ {display_title}")
+        
+        # Add title
+        self.web_view.insert(tk.END, f"{title}\n", 'title')
+        self.web_view.insert(tk.END, f"{url}\n\n", 'link')
+        
+        # Add content (truncated for performance)
+        content = text[:10000] + "\n\n[Content truncated for display]" if len(text) > 10000 else text
+        self.web_view.insert(tk.END, content)
+        
+        self.web_view.config(state='disabled')
+        self.web_view.see('1.0')
+    
+    def _display_granular_analysis(self, analysis, result):
+        """Display comprehensive AI analysis in right panel"""
+        self.clear_protocol()
+        url = result['url']
+        domain = result['source']
+        
+        # Header with score
+        score = analysis['veracity_score']
+        status_color = self.colors['green'] if analysis['validated'] else self.colors['yellow']
+        status_text = '✓ VERIFIED' if analysis['validated'] else '⚠ REVIEW'
+        
+        # Score badge
+        badge_frame = tk.Frame(self.protocol_container, bg=status_color, padx=15, pady=8)
+        badge_frame.pack(fill='x', pady=(0, 15))
+        tk.Label(badge_frame, text=status_text, font=('SF Pro', 13, 'bold'),
+                bg=status_color, fg=self.colors['bg']).pack()
+        
+        # Big score display
+        score_frame = tk.Frame(self.protocol_container, bg=self.colors['panel'])
+        score_frame.pack(fill='x', pady=10)
+        tk.Label(score_frame, text=str(score), font=('SF Pro', 52, 'bold'),
+                bg=self.colors['panel'], fg=status_color).pack(side='left')
+        tk.Label(score_frame, text="/100", font=('SF Pro', 16),
+                bg=self.colors['panel'], fg=self.colors['light_gray']).pack(side='left', pady=(25, 0))
+        
+        # Section: Trust Signals
+        self._create_section_header("🔒 Trust Signals")
+        
+        signals = analysis['signals']
+        for signal_name, value in signals.items():
+            self._create_signal_bar(signal_name.replace('_', ' ').title(), value, 30)
+        
+        # Section: Content Analysis
+        self._create_section_header("📝 Content Analysis")
+        content = analysis['content_analysis']
+        
+        metrics = [
+            ("Word Count", f"{content.get('word_count', 0):,}"),
+            ("Has Citations", "✓ Yes" if content.get('has_citations') else "✗ No"),
+            ("Has Author", "✓ Yes" if content.get('has_author') else "✗ No"),
+            ("Has Date", "✓ Yes" if content.get('has_date') else "✗ No"),
+            ("Quality Score", f"{content.get('quality_score', 0)}/30")
+        ]
+        
+        for label, value in metrics:
+            self._create_metric_row(label, value)
+        
+        # Section: Sentiment Analysis
+        self._create_section_header("💭 Sentiment")
+        sentiment = analysis['sentiment']
+        sent_text = sentiment.get('sentiment', 'neutral').upper()
+        sent_color = self.colors['green'] if sent_text == 'POSITIVE' else self.colors['yellow'] if sent_text == 'NEUTRAL' else self.colors['red']
+        
+        sent_frame = tk.Frame(self.protocol_container, bg=self.colors['panel'])
+        sent_frame.pack(fill='x', pady=3)
+        tk.Label(sent_frame, text=sent_text, font=('SF Pro', 11, 'bold'),
+                bg=self.colors['panel'], fg=sent_color).pack(side='left')
+        polarity = sentiment.get('polarity', 0)
+        tk.Label(sent_frame, text=f"({polarity:+.2f})", font=('SF Pro', 10),
+                bg=self.colors['panel'], fg=self.colors['light_gray']).pack(side='left', padx=(10, 0))
+        
+        # Section: Readability
+        self._create_section_header("📚 Readability")
+        readability = analysis['readability']
+        self._create_metric_row("Flesch Score", str(readability.get('score', 0)))
+        self._create_metric_row("Grade Level", readability.get('grade', 'N/A'))
+        
+        # Section: Risk Factors
+        if analysis['risk_factors']:
+            self._create_section_header("⚠️ Risk Factors")
+            for risk in analysis['risk_factors']:
+                tk.Label(self.protocol_container, text=f"• {risk}", font=('SF Pro', 10),
+                        bg=self.colors['panel'], fg=self.colors['red'], wraplength=300).pack(anchor='w', pady=2)
+        
+        # Section: AI Recommendations
+        self._create_section_header("🤖 AI Recommendations")
+        for rec in analysis['recommendations']:
+            tk.Label(self.protocol_container, text=rec, font=('SF Pro', 10),
+                    bg=self.colors['panel'], fg=self.colors['light_gray'], wraplength=300).pack(anchor='w', pady=3)
+        
+        # Source info
+        tk.Frame(self.protocol_container, height=1, bg=self.colors['card']).pack(fill='x', pady=15)
+        tk.Label(self.protocol_container, text=f"Source: {domain}",
+                font=('SF Pro', 9), bg=self.colors['panel'],
+                fg=self.colors['dark_gray']).pack(anchor='w')
+        
+        # Comments section
+        self.show_comments(url)
+    
+    def _create_section_header(self, title):
+        """Create a section header in the analysis panel"""
+        tk.Frame(self.protocol_container, height=1, bg=self.colors['card']).pack(fill='x', pady=15)
+        tk.Label(self.protocol_container, text=title, font=('SF Pro', 12, 'bold'),
+                bg=self.colors['panel'], fg=self.colors['cyan']).pack(anchor='w', pady=(0, 10))
+    
+    def _create_metric_row(self, label, value):
+        """Create a metric row in the analysis panel"""
+        frame = tk.Frame(self.protocol_container, bg=self.colors['panel'])
+        frame.pack(fill='x', pady=2)
+        tk.Label(frame, text=label, font=('SF Pro', 10),
+                bg=self.colors['panel'], fg=self.colors['light_gray']).pack(side='left')
+        tk.Label(frame, text=value, font=('SF Pro', 10, 'bold'),
+                bg=self.colors['panel'], fg=self.colors['white']).pack(side='right')
     
     def analyze_site(self, result):
         self.clear_protocol()
@@ -545,25 +1044,42 @@ All data stored locally."""
         return {'score': score, 'validated': score >= 70, 'signals': signals}
     
     def signal_bar(self, label, value, max_val):
+        """Legacy method - kept for compatibility"""
+        self._create_signal_bar(label, value, max_val)
+    
+    def _create_signal_bar(self, label, value, max_val):
+        """Create a signal bar with visual indicator"""
         frame = tk.Frame(self.protocol_container, bg=self.colors['panel'])
         frame.pack(fill='x', pady=3)
-        tk.Label(frame, text=label, font=('Inter', 10),
-                bg=self.colors['panel'], fg=self.colors['muted'], width=12).pack(side='left')
+        tk.Label(frame, text=label, font=('SF Pro', 10),
+                bg=self.colors['panel'], fg=self.colors['light_gray'], width=14).pack(side='left')
         
-        bar_container = tk.Frame(frame, bg=self.colors['card'], height=10, width=180)
-        bar_container.pack(side='left', padx=10)
+        bar_container = tk.Frame(frame, bg=self.colors['card'], height=12, width=150)
+        bar_container.pack(side='left', padx=8)
         bar_container.pack_propagate(False)
         
-        width = int((value / max_val) * 180)
-        tk.Frame(bar_container, bg=self.colors['primary'], height=10, width=width).place(x=0, y=0)
-        tk.Label(frame, text=str(value), font=('Inter', 10, 'bold'),
-                bg=self.colors['panel'], fg=self.colors['primary'], width=3).pack(side='left')
+        # Color based on value
+        if value >= 20:
+            bar_color = self.colors['green']
+        elif value >= 10:
+            bar_color = self.colors['yellow']
+        else:
+            bar_color = self.colors['red']
+        
+        width = max(2, int((value / max_val) * 150))
+        tk.Frame(bar_container, bg=bar_color, height=12, width=width).place(x=0, y=0)
+        
+        # Value label
+        color = self.colors['green'] if value >= 20 else self.colors['yellow'] if value >= 10 else self.colors['light_gray']
+        tk.Label(frame, text=str(value), font=('SF Pro', 10, 'bold'),
+                bg=self.colors['panel'], fg=color, width=3).pack(side='left')
     
     def show_comments(self, url):
+        """Display community comments section"""
         tk.Frame(self.protocol_container, height=1, bg=self.colors['card']).pack(fill='x', pady=15)
         tk.Label(self.protocol_container, text="💬 Community Discussion",
-                font=('Inter', 14, 'bold'), bg=self.colors['panel'],
-                fg=self.colors['text']).pack(anchor='w', pady=(0, 10))
+                font=('SF Pro', 13, 'bold'), bg=self.colors['panel'],
+                fg=self.colors['white']).pack(anchor='w', pady=(0, 10))
         
         # Get comments for this URL
         url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
@@ -574,29 +1090,30 @@ All data stored locally."""
             stars = '★' * round(avg) + '☆' * (5 - round(avg))
             tk.Label(self.protocol_container,
                     text=f"{stars} {avg:.1f}/5 ({len(site_comments)} reviews)",
-                    font=('Inter', 12), bg=self.colors['panel'],
-                    fg=self.colors['success']).pack(anchor='w', pady=5)
+                    font=('SF Pro', 12), bg=self.colors['panel'],
+                    fg=self.colors['green']).pack(anchor='w', pady=5)
         else:
             tk.Label(self.protocol_container, text="No reviews yet. Be the first!",
-                    font=('Inter', 12), bg=self.colors['panel'],
-                    fg=self.colors['muted']).pack(anchor='w', pady=5)
+                    font=('SF Pro', 12), bg=self.colors['panel'],
+                    fg=self.colors['light_gray']).pack(anchor='w', pady=5)
         
         # Comment form
-        form_frame = tk.LabelFrame(self.protocol_container, text="Add Comment",
-                                  font=('Inter', 11), bg=self.colors['panel'],
-                                  fg=self.colors['muted'], padx=10, pady=10)
+        form_frame = tk.Frame(self.protocol_container, bg=self.colors['card'], padx=15, pady=15)
         form_frame.pack(fill='x', pady=15)
         
+        tk.Label(form_frame, text="Add Your Review", font=('SF Pro', 11, 'bold'),
+                bg=self.colors['card'], fg=self.colors['cyan']).pack(anchor='w', pady=(0, 10))
+        
         self.comment_rating = tk.StringVar(value="3")
-        tk.Label(form_frame, text="Rating:", font=('Inter', 10),
-                bg=self.colors['panel'], fg=self.colors['muted']).pack(anchor='w')
+        tk.Label(form_frame, text="Rating:", font=('SF Pro', 10),
+                bg=self.colors['card'], fg=self.colors['light_gray']).pack(anchor='w')
         ttk.Combobox(form_frame, textvariable=self.comment_rating,
                     values=["5 - Excellent", "4 - Good", "3 - Okay", "2 - Poor", "1 - Bad"],
                     width=20, state='readonly').pack(anchor='w', pady=(0, 10))
         
-        self.comment_text = tk.Text(form_frame, height=3, font=('Inter', 10),
-                                   bg=self.colors['card'], fg=self.colors['text'],
-                                   relief='flat', insertbackground='white')
+        self.comment_text = tk.Text(form_frame, height=3, font=('SF Pro', 10),
+                                   bg=self.colors['panel'], fg=self.colors['white'],
+                                   relief='flat', insertbackground=self.colors['white'])
         self.comment_text.pack(fill='x', pady=5)
         
         def submit():
@@ -617,12 +1134,14 @@ All data stored locally."""
             self.save_json(self.comments_file, self.comments)
             
             self.comment_text.delete("1.0", "end")
-            self.analyze_site({'url': url, 'source': self.extract_domain(url)})
+            # Refresh display
+            if self.current_analysis:
+                self._display_granular_analysis(self.current_analysis, {'url': url, 'source': self.extract_domain(url)})
             messagebox.showinfo("Posted", "Comment added!")
         
-        tk.Button(form_frame, text="Post Comment", font=('Inter', 10, 'bold'),
-                 bg=self.colors['primary'], fg='white', relief='flat',
-                 command=submit).pack(fill='x', pady=(10, 0))
+        tk.Button(form_frame, text="Post Comment", font=('SF Pro', 11, 'bold'),
+                 bg=self.colors['cyan'], fg=self.colors['bg'], relief='flat',
+                 cursor='hand2', command=submit).pack(fill='x', pady=(10, 0), ipady=8)
         
         # Show existing comments
         if site_comments:
@@ -631,18 +1150,19 @@ All data stored locally."""
                 self.show_comment_item(c)
     
     def show_comment_item(self, comment):
-        frame = tk.Frame(self.protocol_container, bg=self.colors['card'], padx=10, pady=8)
+        """Display a single comment"""
+        frame = tk.Frame(self.protocol_container, bg=self.colors['card'], padx=12, pady=10)
         frame.pack(fill='x', pady=3)
         
         stars = '★' * comment['rating'] + '☆' * (5 - comment['rating'])
         header = f"{comment['user']}  {stars}"
-        tk.Label(frame, text=header, font=('Inter', 10, 'bold'),
-                bg=self.colors['card'], fg=self.colors['primary']).pack(anchor='w')
+        tk.Label(frame, text=header, font=('SF Pro', 10, 'bold'),
+                bg=self.colors['card'], fg=self.colors['cyan']).pack(anchor='w')
         
         if comment.get('text'):
-            tk.Label(frame, text=comment['text'], font=('Inter', 9),
-                    bg=self.colors['card'], fg=self.colors['muted'],
-                    wraplength=280, justify='left').pack(anchor='w')
+            tk.Label(frame, text=comment['text'], font=('SF Pro', 9),
+                    bg=self.colors['card'], fg=self.colors['light_gray'],
+                    wraplength=300, justify='left').pack(anchor='w')
     
     def extract_domain(self, url):
         try:
