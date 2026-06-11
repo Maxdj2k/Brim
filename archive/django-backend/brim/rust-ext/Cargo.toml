@@ -1,0 +1,13 @@
+[package]
+name = "rust-ext"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_ext"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+brim-veracity = { path = "../../rust-node" }
+serde_json = "1.0"

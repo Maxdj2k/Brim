@@ -1,87 +1,94 @@
-# Brim Network with Veracity Protocol
+# Brim Search
 
-A decentralized network implementation with built-in claim validation using the Veracity Protocol.
+Decentralized web search engine with real-time veracity protocol and social layer.
+
+## Versions
+
+### 1. Brim Browser (Recommended) ⭐
+**Full browser with login, embedded viewing, and community discussion.**
+
+```bash
+cd /Users/theredferret03/brim
+python3 brim_browser.py
+```
+
+**Features:**
+- 🔐 User accounts (login/signup)
+- 🌐 Browse websites with veracity panel visible
+- 🔍 Search with DuckDuckGo
+- 📊 Real-time credibility scoring (0-100)
+- 💬 Comment and discuss on any website
+- 🔒 All data stored locally
+- 🎨 Dark theme interface
+
+**Layout:**
+- Left: Search results
+- Center: Browse websites (opens in system browser with panel synced)
+- Right: Veracity analysis + community comments
+
+### 2. Simple Desktop
+Basic version without login:
+
+```bash
+python3 brim_desktop.py
+```
+
+### 3. Browser Client (HTML/JS)
+Standalone browser version:
+
+```bash
+open client/index.html
+```
+
+### 4. Lua + Windsurf
+```bash
+lua brim_search.lua
+```
 
 ## Features
 
-- User Management System
-  - Role-based access control (GlobalAdmin, GroupAdmin, Validator, User)
-  - Group management
-- Veracity Protocol Implementation
-  - Claim creation and validation
-  - Consensus-based validation system
-  - Trust scoring mechanism
-- Python CLI Interface
-  - User and group management
-  - Claim validation
-  - Rich terminal UI
+- **Authentication** — Create accounts, secure login
+- **Web Search** — DuckDuckGo API with fallback
+- **Veracity Protocol** — Real-time credibility analysis
+- **Social Layer** — Comment on any website, see community ratings
+- **Embedded Browsing** — Browse with panel visible (synced to external browser)
+- **Signal Breakdown** — Authority, Security, Citations, Transparency
+- **Local Storage** — No backend, no cloud, fully private
 
-## Project Structure
+## Quick Start
+
+```bash
+cd /Users/theredferret03/brim
+python3 brim_browser.py
+```
+
+1. Create account or sign in
+2. Search for any topic
+3. Click a result to open website
+4. View veracity score in right panel
+5. Post comments and see community ratings
+
+## File Structure
 
 ```
-.
-├── rust-node/           # Core Rust implementation
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs       # Core types and error handling
-│       ├── user.rs      # User management
-│       └── veracity.rs  # Veracity Protocol implementation
-├── python-node/         # Python CLI interface
-│   ├── setup.py
-│   └── python_node/
-│       └── cli.py       # CLI implementation
+brim/
+├── brim_browser.py      # ⭐ Main browser app (USE THIS)
+├── brim_desktop.py      # Simple version without auth
+├── client/              # Browser-only version
+│   ├── index.html
+│   ├── brim.js
+│   └── brim.css
+├── brim_search.lua      # Lua version
+├── archive/             # Old Django backend
 └── README.md
 ```
 
-## Installation
+## Data Storage
 
-### Rust Node
+All user data stored locally in `~/.brim/`:
+- `users.json` — Account credentials (hashed passwords)
+- `comments.json` — Community reviews and discussions
 
-```bash
-cd rust-node
-cargo build --release
-```
+## Legacy
 
-### Python CLI
-
-```bash
-cd python-node
-pip install -e .
-```
-
-## Usage
-
-### Command Line Interface
-
-```bash
-# User Management
-brim users create <username> --role <role>
-brim users list
-
-# Group Management
-brim groups create <name>
-brim groups add-member <group_name> <username>
-
-# Claim Management
-brim claims create "<content>"
-brim claims validate <claim_id> --valid/--invalid --comment "Optional comment"
-```
-
-## Development
-
-### Prerequisites
-
-- Rust 1.70 or later
-- Python 3.8 or later
-- Cargo and pip package managers
-
-### Building from Source
-
-1. Clone the repository
-2. Build the Rust node
-3. Install the Python CLI
-4. Run tests
-
-## License
-
-MIT License 
+Original Django backend preserved in `archive/django-backend/`.
